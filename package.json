@@ -1,0 +1,46 @@
+{
+  "name": "magpie-t3code-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Magpie Bun plugin that exposes Magpie quotas as a CLIProxyAPI-compatible usage hub for T3 Code.",
+  "type": "module",
+  "main": "./src/plugin.ts",
+  "exports": {
+    ".": "./src/plugin.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "t3-code",
+    "cliproxyapi",
+    "quota",
+    "usage"
+  ],
+  "license": "MIT",
+  "magpie": {
+    "name": "T3 Code Hub",
+    "summary": {
+      "en": "Serve Magpie quota as a CLIProxyAPI usage hub for T3 Code.",
+      "zh": "把 Magpie 的额度以 CLIProxyAPI Hub 的形式提供给 T3 Code。"
+    }
+  },
+  "scripts": {
+    "dev": "bun run src/standalone.ts",
+    "start": "bun run src/standalone.ts",
+    "token": "bun run src/cli/token.ts",
+    "verify": "bun run src/cli/verify.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "codegraph:index": "codegraph index",
+    "codegraph:sync": "codegraph sync",
+    "codegraph:status": "codegraph status"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.17",
+    "typescript": "^5.9.2"
+  }
+}

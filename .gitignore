@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Local logs and OS files
+*.log
+.DS_Store
+
+# CodeGraph local databases (see .codegraph/.gitignore too)
+.codegraph/*.db
+.codegraph/*.db-wal
+.codegraph/*.db-shm
+
+# Local runtime data (never commit tokens)
+.data/
