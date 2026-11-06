@@ -115,10 +115,11 @@ test("verify --json writes only the JSON report to stdout", async () => {
     const code = await proc.exited;
     const stdout = await new Response(proc.stdout).text();
     const stderr = await new Response(proc.stderr).text();
-    // The fixture's cursor account has an error, so verify exits 1.
-    expect(code).toBe(1);
+    // The fixture's stale cursor account is carried by Claude and only loses
+    // its row, so every account T3 probes succeeds.
+    expect(code).toBe(0);
     expect(Array.isArray(JSON.parse(stdout))).toBe(true);
-    expect(stderr).toContain("Cursor · cursor@example.com");
+    expect(stderr).toContain("claude@example.com");
   } finally {
     await hub.stop();
     rmSync(dir, { recursive: true, force: true });

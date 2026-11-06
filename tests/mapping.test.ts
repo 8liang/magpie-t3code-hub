@@ -31,19 +31,30 @@ describe("auth-files projection", () => {
     expect(codex?.id_token?.plan_type).toBe("plus");
     expect(codex?.id_token?.chatgpt_plan_type).toBe("plus");
 
+    // Carried by the Claude account, so hidden from T3 as its own column.
     const qoder = byId.get("qoder/qoder@example.com");
     expect(qoder?.provider).toBe("claude");
-    expect(qoder?.email).toBe("Qoder · qoder@example.com");
-    expect(qoder?.disabled).toBe(false);
+    expect(qoder?.email).toBeUndefined();
+    expect(qoder?.disabled).toBe(true);
+    expect(snapshot.accounts.find((entry) => entry.key === "qoder/qoder@example.com")?.carriedBy).toBe(
+      "claude/claude@example.com",
+    );
   });
 
   test("hides accounts T3 Code cannot draw: balances, empty windows and lapsed sign-ins", () => {
-    const disabled = new Map(authFiles(snapshot).map((file) => [file.id, file.disabled]));
+    const disabled = new Map(
+      snapshot.accounts.map((entry) => [entry.key, entry.authFile.disabled]),
+    );
     expect(disabled.get("deepseek/DeepSeek")).toBe(true);
     expect(disabled.get("opencode-zen-free/API key")).toBe(true);
     expect(disabled.get("workbuddy/lapsed@example.com")).toBe(true);
-    // A stale snapshot with windows is still useful.
-    expect(disabled.get("cursor/cursor@example.com")).toBe(false);
+    // A stale snapshot with windows is still useful: carried, not dropped.
+    const carrier = snapshot.accounts.find((entry) => entry.key === "claude/claude@example.com");
+    expect(carrier?.riders?.map((rider) => rider.key)).toEqual([
+      "qoder/qoder@example.com",
+      "workbuddy-ai/workbuddy@example.com",
+      "cursor/cursor@example.com",
+    ]);
   });
 
   test("auth indexes are stable, unique and round-trip through the snapshot", () => {
@@ -64,7 +75,7 @@ describe("usage translation", () => {
     const usage = claudeUsageFor(account("claude/claude@example.com"), NOW) as ClaudeUsage;
     expect(usage.five_hour?.utilization).toBe(11);
     expect(usage.seven_day?.utilization).toBe(44);
-    expect(usage.limits).toHaveLength(1);
+    expect(usage.limits).toHaveLength(4);
     const limit = usage.limits?.[0];
     expect(limit?.kind).toBe("weekly_scoped");
     expect(limit?.percent).toBe(7);
@@ -72,20 +83,67 @@ describe("usage translation", () => {
     expect(limit?.resets_at).toBe(new Date(NOW + 3_600_000).toISOString());
   });
 
-  test("puts every non-native window on scoped bars with the provider name", () => {
-    const usage = claudeUsageFor(account("qoder/qoder@example.com"), NOW) as ClaudeUsage;
+  test("the Claude account carries one full-width row per provider", () => {
+    const usage = claudeUsageFor(account("claude/claude@example.com"), NOW) as ClaudeUsage;
+    expect(usage.limits?.slice(1)).toEqual([
+      // Qoder's tightest window (Credits 49.5%), not the first one.
+      {
+        kind: "weekly_scoped",
+        percent: 49.46666666666667,
+        resets_at: "2026-11-24T13:33:18.000Z",
+        scope: { model: { display_name: "Qoder" } },
+      },
+      {
+        kind: "weekly_scoped",
+        percent: 0.06,
+        resets_at: null,
+        scope: { model: { display_name: "WorkBuddy AI" } },
+      },
+      {
+        kind: "weekly_scoped",
+        percent: 81.344,
+        resets_at: null,
+        scope: { model: { display_name: "Cursor" } },
+      },
+    ]);
+    // A rider the server considers unservable just loses its row.
+    const filtered = claudeUsageFor(
+      account("claude/claude@example.com"),
+      NOW,
+      (rider) => rider.quota.provider !== "cursor",
+    ) as ClaudeUsage;
+    expect(filtered.limits?.map((limit) => limit.scope?.model?.display_name)).toEqual([
+      "Opus",
+      "Qoder",
+      "WorkBuddy AI",
+    ]);
+  });
+
+  test("names rows by user when a provider has several accounts, with distinct row ids", () => {
+    const make = (user: string) => ({
+      provider: "qoder-cn",
+      name: "Qoder CN",
+      user,
+      windows: [{ name: "Credits", used: 1 }],
+    });
+    const built = buildSnapshot(
+      { data: [make("a@x.com"), make("a.x.com"), { provider: "cursor", name: "Cursor", windows: [{ name: "Total", used: 2 }] }] },
+      { fetchedAt: NOW },
+    );
+    // No native Claude account: a synthetic "Magpie" account carries them all.
+    const visible = authFiles(built).filter((file) => !file.disabled);
+    expect(visible).toEqual([
+      expect.objectContaining({ id: "Magpie", provider: "claude", disabled: false }),
+    ]);
+    const carrier = built.byAuthIndex.get(visible[0]!.auth_index)!;
+    const usage = claudeUsageFor(carrier, NOW) as ClaudeUsage;
     expect(usage.five_hour).toBeNull();
     expect(usage.seven_day).toBeNull();
-    const labels = (usage.limits ?? []).map((limit) => limit.scope?.model?.display_name);
-    expect(labels).toEqual([
-      "Qoder · Total credits",
-      "Qoder · Credits",
-      "Qoder · Shared credits",
-    ]);
-    expect(usage.limits?.map((limit) => limit.percent)).toEqual([
-      24.733333333333334,
-      49.46666666666667,
-      0,
+    // "a@x.com" and "a.x.com" share T3's row slug, so the second gets "#2".
+    expect(usage.limits?.map((limit) => limit.scope?.model?.display_name)).toEqual([
+      "Qoder CN · a@x.com",
+      "Qoder CN · a.x.com #2",
+      "Cursor",
     ]);
   });
 
@@ -294,9 +352,10 @@ describe("usage translation", () => {
       { fetchedAt: NOW },
     );
     const credits = built.accounts[0]!;
-    expect(credits.authFile.disabled).toBe(false);
-    const usage = claudeUsageFor(credits, NOW) as ClaudeUsage;
-    expect(usage.limits?.map((limit) => limit.percent)).toEqual([46.5, 25]);
+    expect(credits.carriedBy).toBe("magpie/providers");
+    const usage = claudeUsageFor(built.accounts.at(-1)!, NOW) as ClaudeUsage;
+    // remaining 53.5 → 46.5 used; amount/limit 25% is lower, so Credits wins.
+    expect(usage.limits?.[0]?.percent).toBe(46.5);
   });
 
   test("a new same-user account does not re-index the existing one", () => {
@@ -360,9 +419,8 @@ describe("usage translation", () => {
       },
       { fetchedAt: NOW },
     );
-    expect(withNull.accounts[0]?.authFile.disabled).toBe(false);
-    const usage = claudeUsageFor(withNull.accounts[0]!, NOW) as ClaudeUsage;
-    expect(usage.limits).toHaveLength(1);
+    expect(withNull.accounts[0]?.carriedBy).toBe("magpie/providers");
+    const usage = claudeUsageFor(withNull.accounts.at(-1)!, NOW) as ClaudeUsage;
     expect(usage.limits?.[0]?.percent).toBe(5);
   });
 

@@ -18,6 +18,7 @@ import {
 } from "./mapping";
 import type {
   CliproxyApiCallRequest,
+  HubAccount,
   HubConfig,
   HubLogger,
   HubSnapshot,
@@ -426,6 +427,9 @@ export async function startHub(
       }
 
       if (request.method === "POST" && path === "/v0/management/api-call") {
+        const accountServable = (entry: HubAccount): boolean =>
+          !optionString(entry.quota.error) ||
+          (optionString(entry.quota.readAt) !== undefined && !isExpired(entry.referenceAt, true));
         const body = await readBody(request);
         if (!isRecord(body)) return json({ error: "api-call expects an object." }, 400);
         const call = body as CliproxyApiCallRequest;
@@ -445,15 +449,12 @@ export async function startHub(
         // readAt) are still served, but no longer than the hub serves a stale
         // snapshot; without a readAt their age is unknown.
         const accountError = optionString(account.quota.error);
-        if (
-          accountError &&
-          (optionString(account.quota.readAt) === undefined ||
-            isExpired(account.referenceAt, true))
-        ) {
+        if (accountError && !accountServable(account)) {
           return json(apiReply(503, `Magpie could not read this account: ${accountError}`));
         }
 
-        const reply = usageFor(account, upstreamUrl);
+        // Carried accounts follow the same rule; a stale one just drops its row.
+        const reply = usageFor(account, upstreamUrl, accountServable);
         return json(reply);
       }
 
@@ -498,6 +499,7 @@ export async function startHub(
             user: typeof account.quota.user === "string" ? account.quota.user : null,
             plan: typeof account.quota.plan === "string" ? account.quota.plan : null,
             disabled: account.authFile.disabled === true,
+            carriedBy: account.carriedBy ?? null,
             windows: usableWindows(account.quota).map((window) => {
               const used = windowUsed(window);
               return {

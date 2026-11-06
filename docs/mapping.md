@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | `claude` | `claude` | `user` | T3 写死 `Claude Subscription` | Claude：5h / 7d / scoped |
 | `codex` | `codex` | `user` | `plan_type`（如 `plus`） | Codex：primary / secondary |
-| 其他（`cursor`、`qoder`、`qoder-cn`、`workbuddy-ai`、`antigravity`……） | `claude` | `<name> · <user>` | T3 写死 `Claude Subscription` | Claude：全部窗口进 scoped |
+| 其他（`cursor`、`qoder`、`qoder-cn`、`workbuddy-ai`、`antigravity`……） | `claude`（`disabled: true`，由 Claude 账号承载） | — | — | 最紧的一个窗口成为承载账号的一行 `Weekly · <供应商>` |
 | `kind: "balance"` 且无窗口 | — | — | — | 不返回（disabled） |
 | 无任何带 `used` 的窗口 | — | — | — | 不返回（disabled） |
 | `lapsed` 非空 | — | — | — | 不返回（disabled） |
@@ -69,35 +69,37 @@ Codex · user@example.com
 
 ### 非原生供应商
 
-所有带 `used` 的窗口都放进 Claude 的 `limits[]`：
-
-```json
-{
-  "kind": "weekly_scoped",
-  "percent": 49.46666666666667,
-  "resets_at": "2026-11-24T13:33:18Z",
-  "scope": { "model": { "display_name": "Qoder · Credits" } }
-}
-```
-
-T3 最终显示：
+非原生账号**不单独出现在 T3 里**，而是挂到一个 Claude 账号上（`HubAccount.riders`），每个账号一行 scoped 进度条：
 
 ```text
-Qoder · user@example.com        [Claude 图标]
-  Weekly · Qoder · Total credits    24.7%
-  Weekly · Qoder · Credits          49.5%
-  Weekly · Qoder · Shared credits    0.0%
+Claude Code · user@example.com            ← 承载账号（唯一一列）
+  Session                     63%
+  Weekly                      67%
+  Weekly · Cursor             89.5%       ← 每个供应商一行，占满整行
+  Weekly · Qoder              49.5%
+  Weekly · Qoder CN · a@qq.com 46.5%      ← 同一供应商有多个账号时带上 user
+  Weekly · Qoder CN · b@qq.com 34.0%
 ```
 
-补充规则：
+原因在 T3 的额度页布局（web 端 `usageLimits` 模块）：
 
-- 标签前缀是 `<account.name> · <window.name>`。
-- 有 `pool` 时追加 ` (<pool>)`，例如 `Antigravity · Gemini 3 Pro (Gemini)`。
-- 同一账号内标签重复时追加 ` #2`、` #3`。
-- `windows` 不是数组时视为空；数组里的 `null` 或其他非对象条目会被跳过。
-- 百分比直接取 Magpie 的 `used` 并裁剪到 0–100。
-- 百分比优先取 `used`；缺失时用 `100 - remaining`；再缺失时用 `amount / limit × 100`。
+- 同一 driver 的所有账号组成一个池，**每个账号占一列**（`grid-template-columns: repeat(N, 1fr)`）；
+- 每个窗口 id 一行（Claude 的行键是 `kind:id`，scoped 窗口 id 是 `seven_day_<display_name 的 slug>`）；
+- 某账号没有该窗口时，那一格留空。
+
+所以只要池里有多个账号，每条进度条最多只有 `1/N` 宽。只保留一个 Claude 账号、把其他供应商都变成它的行，每行就占满整行。
+
+规则：
+
+- 承载账号：第一个未禁用的原生 Claude 账号；没有时生成一个合成账号（`id: "Magpie"`，key `magpie/providers`）。
+- 被承载的账号在 auth-files 中 `disabled: true`，在 `/v1/hub/status` 中带 `carriedBy`。
+- 每个账号只取**用量最高**（最先耗尽）的窗口；用量相同时取 Magpie 顺序中的第一个。其余窗口不显示。
+- 行名为供应商名（`account.name`）；同名账号多于一个时为 `<name> · <user>`。T3 按 slug 区分行，slug 冲突时追加 ` #2`。
+- 被承载账号有 `error` 且 `readAt` 缺失或超过 `maxStaleMs` 时，只去掉这一行，不影响承载账号。
+- 百分比优先取 `used`；缺失时用 `100 - remaining`；再缺失时用 `amount / limit × 100`，裁剪到 0–100。
 - 重置时间优先 `resetsAt`；没有则用该账号的 `readAt`（缺失时用快照的 `fetchedAt`）加 `resetSecs`；都没有就省略。**不会**用 api-call 的当前时间，否则旧快照里的倒计时会随每次轮询向后滑动。
+
+代价：T3 把 scoped 行当作 7 天窗口画进度刻度，月度额度的刻度位置不准确（重置时间文字是对的）；`windows` 不是数组或含 `null` 条目时按空/跳过处理。
 
 ## 禁用规则
 
@@ -130,9 +132,8 @@ accounts.filter((account) =>
 
 因此：
 
-- 非原生供应商用 `claude` 作为 cliproxy provider，才能容纳任意数量的窗口；
-- 代价是进度条统一显示为 `Weekly · ...`，plan 显示为 `Claude Subscription`；
-- 真实供应商标识放在账号主标签（`email` 字段）里，例如 `Cursor · user@example.com`。
+- 非原生供应商挂在 Claude 账号下，作为 `Weekly · <供应商>` 行显示；
+- 代价是它们出现在 Claude 分组里，前缀固定为 `Weekly ·`。
 
 如果 T3 未来支持任意 `driver` 或自定义窗口类型，可以移除这层借用，直接映射成更准确的 driver 与窗口 kind。
 
@@ -143,7 +144,7 @@ accounts.filter((account) =>
 | 增加/修改窗口名匹配 | `src/hub/mapping.ts` 的 `canonicalSessionName()` / `canonicalWeekName()` |
 | 改变账号 id / auth index | `accountKey()` / `stableHash()` |
 | 改变 disabled 规则 | `authFileFor()` |
-| 改变非原生账号的承载方式 | `authFileFor()` 的 `cliproxyProvider` 与 `claudeUsageFor()` |
+| 改变非原生账号的承载方式 | `attachRiders()` 与 `claudeUsageFor()` |
 | 改变返回给 T3 的窗口顺序 | `claudeUsageFor()` 的遍历顺序（当前保持 Magpie 顺序） |
 | 暴露 reset credits | `usageFor()` 的 credits 分支 + `readAccount` 消费路径（需要 Magpie 支持） |
 

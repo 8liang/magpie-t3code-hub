@@ -116,65 +116,108 @@ function epochSeconds(window: MagpieQuotaWindow, referenceMs: number): number | 
   return ms === null ? null : Math.floor(ms / 1000);
 }
 
-function windowLabel(account: MagpieQuotaAccount, window: MagpieQuotaWindow): string {
-  const name = windowName(window);
-  const base = `${accountDisplayName(account)} · ${name}`;
-  return typeof window.pool === "string" && window.pool.trim() ? `${base} (${window.pool})` : base;
+/**
+ * The window that limits a non-native account first: the one with the
+ * highest usage (ties keep Magpie's order).
+ */
+export function headlineWindow(account: MagpieQuotaAccount): MagpieQuotaWindow | undefined {
+  let best: MagpieQuotaWindow | undefined;
+  let bestUsed = -Infinity;
+  for (const window of usableWindows(account)) {
+    const used = windowUsed(window) as number;
+    if (used > bestUsed) {
+      best = window;
+      bestUsed = used;
+    }
+  }
+  return best;
 }
 
-function uniqueLabel(base: string, seen: Set<string>): string {
+/** T3 Code's row id for a scoped limit (`seven_day_<slug>`); labels must differ here. */
+function scopedSlug(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+function uniqueScopedLabel(base: string, seenSlugs: Set<string>): string {
   let label = base;
   let suffix = 2;
-  while (seen.has(label)) {
+  while (seenSlugs.has(scopedSlug(label))) {
     label = `${base} #${suffix}`;
     suffix += 1;
   }
-  seen.add(label);
+  seenSlugs.add(scopedSlug(label));
   return label;
 }
 
 /**
- * T3 Code's Claude adapter treats every `weekly_scoped` limit as a weekly bar.
- * That is the only bucket that can carry an arbitrary number of Magpie
- * windows, so non-Claude/Codex accounts use it for every window.
+ * Row name for a carried account: the provider name, plus the user when the
+ * same provider has several carried accounts.
+ */
+function riderLabel(rider: MagpieQuotaAccount, sameNameCount: number): string {
+  const name = accountDisplayName(rider);
+  const user = typeof rider.user === "string" ? rider.user.trim() : "";
+  return sameNameCount > 1 && user ? `${name} · ${user}` : name;
+}
+
+/**
+ * T3 Code lays a driver's accounts out as grid columns (one per account) and
+ * each window id as a row. A bar fills the row only when the pool has a
+ * single account, so every non-native account rides on one Claude account
+ * (`HubAccount.riders`) as a `weekly_scoped` row: one row per provider, its
+ * tightest window. The carrier's own windows map to five_hour/seven_day.
+ *
+ * `include` lets the server drop riders whose Magpie read failed too long ago.
  */
 export function claudeUsageFor(
   account: HubAccount,
   referenceMs = account.referenceAt,
+  include: (rider: HubAccount) => boolean = () => true,
 ): ClaudeUsage {
-  const quota = account.quota;
-  const native = isNativeProvider(quota.provider);
   const usage: ClaudeUsage = { five_hour: null, seven_day: null, limits: [] };
-  const seen = new Set<string>();
+  const seenSlugs = new Set<string>();
   const limits: ClaudeUsageLimit[] = [];
-  const windows = usableWindows(quota);
-  // Only the exact all-models windows become five_hour/seven_day. A window
-  // such as "Weekly Opus" is model-scoped and must stay a separate limit
-  // instead of overwriting the account-wide weekly number.
-  const session = native
-    ? windows.find((window) => canonicalSessionName(windowName(window)))
-    : undefined;
-  const week = native ? windows.find((window) => canonicalWeekName(windowName(window))) : undefined;
+  const quota = account.quota;
 
-  for (const window of windows) {
-    const used = clampPercent(windowUsed(window) as number);
-    const resetsAt = isoReset(window, referenceMs);
-
-    if (window === session) {
-      usage.five_hour = { utilization: used, resets_at: resetsAt };
-      continue;
+  if (isNativeProvider(quota.provider)) {
+    const windows = usableWindows(quota);
+    // Only the exact all-models windows become five_hour/seven_day. A window
+    // such as "Weekly Opus" is model-scoped and must stay a separate limit
+    // instead of overwriting the account-wide weekly number.
+    const session = windows.find((window) => canonicalSessionName(windowName(window)));
+    const week = windows.find((window) => canonicalWeekName(windowName(window)));
+    for (const window of windows) {
+      const used = clampPercent(windowUsed(window) as number);
+      const resetsAt = isoReset(window, referenceMs);
+      if (window === session) {
+        usage.five_hour = { utilization: used, resets_at: resetsAt };
+      } else if (window === week) {
+        usage.seven_day = { utilization: used, resets_at: resetsAt };
+      } else {
+        limits.push({
+          kind: "weekly_scoped",
+          percent: used,
+          resets_at: resetsAt,
+          scope: { model: { display_name: uniqueScopedLabel(windowName(window), seenSlugs) } },
+        });
+      }
     }
-    if (window === week) {
-      usage.seven_day = { utilization: used, resets_at: resetsAt };
-      continue;
-    }
+  }
 
-    const label = uniqueLabel(native ? windowName(window) : windowLabel(quota, window), seen);
+  const riders = (account.riders ?? []).filter(include);
+  const nameCounts = new Map<string, number>();
+  for (const rider of riders) {
+    const name = accountDisplayName(rider.quota);
+    nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+  }
+  for (const rider of riders) {
+    const headline = headlineWindow(rider.quota);
+    if (!headline) continue;
+    const label = riderLabel(rider.quota, nameCounts.get(accountDisplayName(rider.quota)) ?? 1);
     limits.push({
       kind: "weekly_scoped",
-      percent: used,
-      resets_at: resetsAt,
-      scope: { model: { display_name: label } },
+      percent: clampPercent(windowUsed(headline) as number),
+      resets_at: isoReset(headline, rider.referenceAt),
+      scope: { model: { display_name: uniqueScopedLabel(label, seenSlugs) } },
     });
   }
 
@@ -236,7 +279,11 @@ export function codexUsageFor(
  * T3 Code sends the provider's native quota URL through `api-call` and parses
  * the reply itself. We answer in the provider's shape, using Magpie data.
  */
-export function usageFor(account: HubAccount, url: string): CliproxyApiCallResponse {
+export function usageFor(
+  account: HubAccount,
+  url: string,
+  includeRider: (rider: HubAccount) => boolean = () => true,
+): CliproxyApiCallResponse {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -259,7 +306,7 @@ export function usageFor(account: HubAccount, url: string): CliproxyApiCallRespo
       provider: "claude",
       reply: () => ({
         status_code: 200,
-        body: JSON.stringify(claudeUsageFor(account, referenceMs)),
+        body: JSON.stringify(claudeUsageFor(account, referenceMs, includeRider)),
       }),
     };
   } else if (parsed.hostname === "chatgpt.com" && parsed.pathname === "/backend-api/wham/usage") {
@@ -335,8 +382,6 @@ function authFileFor(account: MagpieQuotaAccount, key: string, base: string): Cl
   const native = isNativeProvider(account.provider);
   const authIndex = identityIndex(account, base);
   const user = typeof account.user === "string" ? account.user.trim() : "";
-  const name = accountDisplayName(account);
-  const label = user ? `${name} · ${user}` : name;
   const bars = account.provider === "codex" ? codexBars(account) : undefined;
   const hasWindows = bars
     ? Boolean(bars.session || bars.week)
@@ -353,11 +398,9 @@ function authFileFor(account: MagpieQuotaAccount, key: string, base: string): Cl
     disabled: wasDisabled,
   };
 
-  if (native) {
-    if (user) file.email = user;
-  } else {
-    file.email = label;
-  }
+  // Native accounts keep the email so T3 merges them with its own sign-in.
+  // Non-native accounts are carried by a Claude account and never shown.
+  if (native && user) file.email = user;
 
   if (account.provider === "codex" && typeof account.plan === "string" && account.plan.trim()) {
     file.id_token = {
@@ -367,6 +410,51 @@ function authFileFor(account: MagpieQuotaAccount, key: string, base: string): Cl
   }
 
   return file;
+}
+
+const CARRIER_KEY = "magpie/providers";
+
+/**
+ * Hand every drawable non-native account to one Claude account (see
+ * claudeUsageFor). The carrier is the first enabled native Claude account;
+ * without one, a synthetic "Magpie" account carries them. Carried accounts
+ * stay in the snapshot (and /v1/hub/status) but are disabled for T3.
+ */
+function attachRiders(
+  accounts: HubAccount[],
+  byAuthIndex: Map<string, HubAccount>,
+  fetchedAt: number,
+): void {
+  const riders = accounts.filter(
+    (account) => !isNativeProvider(account.quota.provider) && !account.authFile.disabled,
+  );
+  if (riders.length === 0) return;
+
+  let carrier = accounts.find(
+    (account) => account.quota.provider === "claude" && !account.authFile.disabled,
+  );
+  if (!carrier) {
+    let authIndex = stableHash(CARRIER_KEY);
+    let suffix = 2;
+    while (byAuthIndex.has(authIndex)) {
+      authIndex = stableHash(`${CARRIER_KEY}:${suffix}`);
+      suffix += 1;
+    }
+    carrier = {
+      key: CARRIER_KEY,
+      referenceAt: fetchedAt,
+      authFile: { id: "Magpie", auth_index: authIndex, provider: "claude", disabled: false },
+      quota: { provider: "magpie", name: "Magpie", windows: [] },
+    };
+    accounts.push(carrier);
+    byAuthIndex.set(authIndex, carrier);
+  }
+
+  carrier.riders = riders;
+  for (const rider of riders) {
+    rider.carriedBy = carrier.key;
+    rider.authFile.disabled = true;
+  }
 }
 
 export function buildSnapshot(
@@ -416,6 +504,8 @@ export function buildSnapshot(
     accounts.push(account);
     byAuthIndex.set(authIndex, account);
   }
+
+  attachRiders(accounts, byAuthIndex, fetchedAt);
 
   return {
     fetchedAt,

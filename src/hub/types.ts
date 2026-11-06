@@ -129,6 +129,10 @@ export interface HubAccount {
   referenceAt: number;
   authFile: CliproxyAuthFile;
   quota: MagpieQuotaAccount;
+  /** Non-native accounts drawn as scoped rows of this Claude account. */
+  riders?: HubAccount[];
+  /** Key of the account that carries this one (it is hidden from T3 itself). */
+  carriedBy?: string;
 }
 
 export interface HubSnapshot {
