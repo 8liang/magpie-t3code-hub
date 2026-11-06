@@ -76,6 +76,7 @@ T3 Code 中接入：
 | [开发与接入](development.md) | 本地开发、Magpie 插件安装、T3 配置、CodeGraph |
 | [运维](operations.md) | 配置、文件、日志、健康检查、安全、排障 |
 | [决策记录：作为 Magpie 插件运行](decisions/0001-run-as-magpie-bun-plugin.md) | 为什么是插件宿主里的 sidecar，而不是独立守护进程 |
+| [决策记录：声明为中间件](decisions/0002-declare-as-gateway-middleware.md) | 为什么用 `magpie.hooks` + 空中间件，而不是 `main`（会带 Provider 标签） |
 | [参考资料](references.md) | Magpie、T3 Code、CLIProxyAPI、CodeGraph 链接 |
 
 ## 验证状态
@@ -93,9 +94,9 @@ T3 Code 中接入：
 
 Magpie 的插件系统没有“注册任意 HTTP 路由”的 API。网关中间件运行在 moejs 里，不能使用 `fetch`、定时器或 Node API；gateway hooks 只能改写已有请求，不能新增路由。
 
-但 Magpie 的 **插件宿主本身是一个长期存活的 Bun 进程**。本项目的入口 `src/plugin.ts` 导出一个 OpenCode 风格的 `server` 函数，在函数里调用 `Bun.serve()` 启动 Hub。Magpie 加载插件时，监听器随之启动；插件宿主退出或被禁用时，监听器随之消失。若同时存在另一个借用了该 Hub 的插件宿主，它会在约 2 秒内接管监听。
+但 Magpie 的 **插件宿主本身是一个长期存活的 Bun 进程**。本项目以 request hooks 声明入口（`"magpie": { "hooks": "./src/hooks.ts" }`，没有 `main`），宿主加载插件时 import 该模块，模块顶层调用 `Bun.serve()` 启动 Hub；另声明一个空的 `magpie.middleware`。Magpie 显示“中间件 + 请求 Hook”，不显示 Provider。Magpie 加载插件时，监听器随之启动；插件宿主退出或被禁用时，监听器随之消失。若同时存在另一个借用了该 Hub 的插件宿主，它会在约 2 秒内接管监听。
 
-详见 [决策记录 0001](decisions/0001-run-as-magpie-bun-plugin.md)。
+详见 [决策记录 0001](decisions/0001-run-as-magpie-bun-plugin.md) 与 [0002](decisions/0002-declare-as-gateway-middleware.md)。
 
 ### 2. 翻译成 T3 能吃的形状
 
@@ -107,7 +108,7 @@ T3 Code 的 CLIProxyAPI usage source 只处理 `provider` 为 `codex` 或 `claud
   - Codex：`https://chatgpt.com/backend-api/wham/usage` 与 reset-credits
 - 按 Anthropic / Codex 的原生 JSON 结构解析成进度条。
 
-因此 Hub 不是直接返回 Magpie 的窗口结构，而是**按 T3 发来的原生 URL，合成对应供应商的 usage JSON**。Magpie 的 Claude / Codex 账号走原生映射；其他供应商（Cursor、Qoder、WorkBuddy 等）借用 Claude 适配器的 `weekly_scoped` 桶显示，账号标签里带真实供应商名。
+因此 Hub 不是直接返回 Magpie 的窗口结构，而是**按 T3 发来的原生 URL，合成对应供应商的 usage JSON**。Magpie 的 Claude / Codex 账号走原生映射；其他供应商（Cursor、Qoder、WorkBuddy 等）挂在 Claude 账号下，每个供应商一行 `Weekly · <供应商>`，取最紧的一个窗口。
 
 详见 [映射规则](mapping.md)。
 
@@ -119,7 +120,7 @@ T3 Code 的 CLIProxyAPI usage source 只处理 `provider` 为 `codex` 或 `claud
 
 ## 已知限制
 
-1. **T3 Code 目前只认 `codex` / `claude` 两种账号**。非原生供应商只能借 Claude 适配器显示，进度条前缀会是 “Weekly ·”，plan 也可能显示为 “Claude Subscription”。这是 T3 的数据模型限制，不是 Hub 的数据问题。
+1. **T3 Code 目前只认 `codex` / `claude` 两种账号**。非原生供应商只能挂在 Claude 账号下显示，行名前缀固定为 “Weekly ·”。这是 T3 的数据模型限制，不是 Hub 的数据问题。
 2. **只有两个原生桶**：Codex 只有 primary / secondary；Claude 原生有 5 小时 / 7 天，其余窗口走 scoped 桶。Magpie 的更多窗口在 T3 中可能被合并或截断。
 3. **余额型账号不显示**：DeepSeek 余额、OpenCode Zen 余额没有百分比窗口，T3 的进度条模型无法表达，Hub 会把这些账号标记为 disabled。
 4. **reset credits 不暴露**：Magpie 没有向插件开放 reset-credit 消费接口，因此 Hub 不向 T3 广告可消费的 reset credits，避免出现点了没用的按钮。

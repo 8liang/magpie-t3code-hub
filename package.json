@@ -2,12 +2,8 @@
   "name": "magpie-t3code-hub",
   "version": "0.1.0",
   "private": true,
-  "description": "A Magpie Bun plugin that exposes Magpie quotas as a CLIProxyAPI-compatible usage hub for T3 Code.",
+  "description": "Magpie gateway middleware that serves Magpie quotas as a CLIProxyAPI-compatible usage hub for T3 Code.",
   "type": "module",
-  "main": "./src/plugin.ts",
-  "exports": {
-    ".": "./src/plugin.ts"
-  },
   "files": [
     "src",
     "README.md"
@@ -15,6 +11,7 @@
   "keywords": [
     "magpie",
     "magpie-plugin",
+    "magpie-middleware",
     "t3-code",
     "cliproxyapi",
     "quota",
@@ -23,6 +20,8 @@
   "license": "MIT",
   "magpie": {
     "name": "T3 Code Hub",
+    "hooks": "./src/hooks.ts",
+    "middleware": "./src/hub.middleware.js",
     "summary": {
       "en": "Serve Magpie quota as a CLIProxyAPI usage hub for T3 Code.",
       "zh": "把 Magpie 的额度以 CLIProxyAPI Hub 的形式提供给 T3 Code。"

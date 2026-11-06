@@ -164,7 +164,7 @@ MAGPIE_T3CODE_HUB_HOME=/tmp/magpie-t3hub-dev bun run verify
 
 插件模式和独立模式共用同一套 `src/hub/*`：
 
-- 插件模式：`src/plugin.ts` → `ensureHub()` → `Bun.serve()`
+- 插件模式：`src/hooks.ts`（`magpie.hooks`）→ `ensureHub()` → `Bun.serve()`（`src/hub.middleware.js` 只是一个空中间件声明）
 - 独立模式：`src/standalone.ts` → `startHub()` → `Bun.serve()`
 
 ## CodeGraph MCP
@@ -209,7 +209,8 @@ codegraph context "修改 usage 映射"
 
 ```text
 src/
-  plugin.ts              Magpie 插件入口
+  hooks.ts               Magpie 插件入口（magpie.hooks，启动 Hub）
+  hub.middleware.js      空 gateway middleware，让 Magpie 把插件标成中间件
   standalone.ts          独立运行入口
   hub/
     server.ts            HTTP 路由、鉴权、健康检查、ensureHub

@@ -1,6 +1,26 @@
 # magpie-t3code-hub
 
-A Magpie Bun plugin that exposes [Magpie](https://usemagpie.ai)'s quota data as a
+把 [Magpie](https://usemagpie.ai) 的额度数据以 CLIProxyAPI Hub 的形式提供给 T3 Code，让 T3 Code 的额度页显示 Magpie 里所有账号的用量。
+
+## 中文说明
+
+**用法**
+
+1. 安装插件：`magpie plugin add /插件所在的绝对路径`，装好后在 Magpie 里打开它。插件启动后会在 `127.0.0.1:4319` 监听。
+2. 取 management key：`bun run token`（如果 `bun` 不在 PATH 里，用 `~/.real/.bin/bun run token`）。
+3. 在 T3 Code 中打开 **Settings → Providers → Usage providers → Add a CLIProxyAPI hub**，地址填 `http://127.0.0.1:4319`，key 填第 2 步打印的值。
+
+**显示效果**
+
+- Claude Code、Codex 账号按 T3 原生方式显示：Session、Weekly 进度条。
+- Cursor、Qoder、WorkBuddy 等其他供应商，挂在 Claude 账号下面，每个账号一行 `Weekly · <供应商>`，显示用量最高的那个窗口。T3 只认 Claude、Codex 两类账号，`Weekly ·` 前缀是 T3 自己加的。
+- 在 Magpie 里显示为“中间件 + 请求 Hook”，不改动任何请求。
+
+**排查**：`bun run verify` 会按 T3 的请求顺序把 hub 跑一遍；完整文档从 [docs/index.md](docs/index.md) 开始（中文）。
+
+## English
+
+A Magpie gateway-middleware plugin that exposes [Magpie](https://usemagpie.ai)'s quota data as a
 CLIProxyAPI-compatible usage hub for T3 Code.
 
 ```
@@ -49,7 +69,8 @@ The full knowledge base starts at [docs/index.md](docs/index.md).
 
 | Path | Purpose |
 |---|---|
-| `src/plugin.ts` | Magpie plugin entry; starts the Bun HTTP listener |
+| `src/hooks.ts` | Magpie entry (`magpie.hooks`, no `main`, so no Provider chip); starts the Bun HTTP listener |
+| `src/hub.middleware.js` | No-op gateway middleware so Magpie lists the plugin as middleware |
 | `src/hub/server.ts` | CLIProxyAPI management API consumed by T3 Code |
 | `src/hub/mapping.ts` | Magpie quotas → CLIProxyAPI accounts and provider-native usage |
 | `src/hub/magpie.ts` | Magpie `/v1/magpie/quotas` client with a short cache |
@@ -63,4 +84,5 @@ The full knowledge base starts at [docs/index.md](docs/index.md).
 
 Version `0.1.0`. Read [docs/index.md](docs/index.md) for limitations: T3 Code's
 CLIProxyAPI adapter only understands `codex` and `claude` accounts, so other
-Magpie providers are shown through the Claude adapter with scoped bars.
+Magpie providers ride on the Claude account as one full-width
+`Weekly · <provider>` row each.

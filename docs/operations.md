@@ -56,7 +56,7 @@ curl -s -H "Authorization: Bearer $(bun run token)" \
 - `fetchedAt` / `stale` / `staleForMs` / `expired` / `maxStaleMs`
 - `lastOkAt` / `lastError`
 - `upstream.url` / `upstream.accounts`
-- 每个账号的 `id`、`authIndex`、`sourceProvider`、`cliproxyProvider`、`disabled`、窗口（`used` 是从 `used` / `remaining` / `amount+limit` 推导后、与 T3 看到一致的百分比）
+- 每个账号的 `id`、`authIndex`、`sourceProvider`、`cliproxyProvider`、`disabled`、`carriedBy`（被哪个 Claude 账号承载）、窗口（`used` 是从 `used` / `remaining` / `amount+limit` 推导后、与 T3 看到一致的百分比）
 
 注意：这个端点包含账号邮箱/用户名和上游错误，属于敏感信息，需要 token。
 
@@ -172,7 +172,7 @@ stateDiagram-v2
 | 端口被占用 | `lsof -nP -iTCP:4319 -sTCP:LISTEN`；改端口或停掉旧进程 |
 | 插件加载失败：Cannot create the management key | `MAGPIE_T3CODE_HUB_HOME` 不可写；设置 `MAGPIE_T3CODE_HUB_TOKEN` 或插件选项 `managementKey`，或换可写目录 |
 | Hub 短暂 connection refused | 借用方在拥有者退出后最多约 2 秒接管；若持续不通，检查端口上的进程 |
-| 插件装了但 Hub 没起来 | `magpie log -n 150`；确认入口是 `src/plugin.ts`、`main` 字段存在；关闭再打开插件 |
+| 插件装了但 Hub 没起来 | `magpie log -n 150`；确认 `package.json` 有 `magpie.hooks: ./src/hooks.ts`、没有 `main`；`magpie plugin list` 应显示 `async gateway hook`；关闭再打开插件 |
 | Hub 起来了但 T3 连不上 | T3 的 Hub URL 是否只填 origin；是否填了 `/v0/management/...` |
 | 改了源码但行为没变 | Magpie 可能缓存了插件；关闭再打开插件或重启 Magpie |
 | Bun 找不到 | `export PATH="$HOME/.real/.bin:$PATH"` 或使用 Magpie 内置 `magpie-bun` |

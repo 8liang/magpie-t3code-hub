@@ -8,7 +8,7 @@ flowchart TB
     direction TB
     M[Magpie Gateway<br/>127.0.0.1:3425]
     P[plugin-host（Bun）]
-    E[src/plugin.ts<br/>server(input, options)]
+    E[src/hooks.ts<br/>magpie.hooks]
     Q[QuotaSource<br/>5s cache]
     S[Hub HTTP server<br/>127.0.0.1:4319]
     P --> E --> S
@@ -27,8 +27,8 @@ flowchart TB
 
 Hub 不接触模型流量，只读写额度：
 
-1. Magpie 插件宿主启动时加载 `src/plugin.ts`。
-2. 插件函数调用 `ensureHub()`，在宿主进程里 `Bun.serve()` 一个回环 HTTP 监听。
+1. Magpie 插件宿主加载插件时 import `magpie.hooks` 指向的 `src/hooks.ts`。包里没有 `main`，所以不显示 Provider 标签；另有一个空的 `magpie.middleware`（`src/hub.middleware.js`）。见 [0002](decisions/0002-declare-as-gateway-middleware.md)。
+2. 模块顶层调用 `ensureHub()`，在宿主进程里 `Bun.serve()` 一个回环 HTTP 监听；`onRequest` 不改动任何请求。
 3. T3 Code 把 Hub 当作一个 CLIProxyAPI Hub，读取账号列表并探测额度。
 4. Hub 读取 Magpie 的 `/v1/magpie/quotas`，把窗口翻译成 T3 期望的供应商原生结构。
 
@@ -36,7 +36,8 @@ Hub 不接触模型流量，只读写额度：
 
 | 组件 | 位置 | 职责 |
 |---|---|---|
-| 插件入口 | `src/plugin.ts` | 读取 Magpie 插件选项，启动/替换 Hub 单例，返回空 hooks |
+| 插件入口 | `src/hooks.ts` | request hooks 模块：从 `plugins.json` 读选项，启动/替换 Hub 单例；`onRequest` 原样放行 |
+| 中间件声明 | `src/hub.middleware.js` | moejs 空中间件，只用于让 Magpie 把插件标成中间件；不改动任何请求 |
 | Hub 服务器 | `src/hub/server.ts` | 路由、鉴权、请求体校验、健康检查、状态文件 |
 | 额度读取 | `src/hub/magpie.ts` | 请求 Magpie 额度 API，5 秒缓存，失败时返回上一份快照 |
 | 映射 | `src/hub/mapping.ts` | Magpie 账号 → `auth-files`；窗口 → Claude / Codex usage |
@@ -50,15 +51,15 @@ Hub 不接触模型流量，只读写额度：
 sequenceDiagram
   participant M as Magpie
   participant PH as plugin-host (Bun)
-  participant P as src/plugin.ts
+  participant P as src/hooks.ts
   participant H as Hub :4319
   participant T as T3 Code
 
   M->>PH: 启动 host（有插件需要时）
-  PH->>P: import 入口，调用 server(input, options)
-  P->>H: ensureHub() → Bun.serve()
+  PH->>P: import magpie.hooks 模块
+  P->>H: 顶层 await ensureHub() → Bun.serve()
   H-->>P: handle
-  P-->>PH: return {}（无 OpenCode hooks）
+  P-->>PH: 导出 onRequest（只返回 undefined）
   T->>H: GET /v0/management/auth-files
   H->>M: GET /v1/magpie/quotas（首次/缓存过期）
   H-->>T: { files: [...] }

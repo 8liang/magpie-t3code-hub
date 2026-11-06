@@ -1,6 +1,6 @@
 # 0001：作为 Magpie Bun 插件运行，并在插件宿主内启动 HTTP 监听
 
-- 状态：已采纳
+- 状态：已采纳；入口声明方式已由 [0002](0002-declare-as-gateway-middleware.md) 取代
 - 日期：2026-11-05
 - 相关文档：[架构](../architecture.md)、[T3 协议](../protocol/t3-cliproxy-hub.md)
 
