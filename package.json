@@ -6,6 +6,7 @@
   "type": "module",
   "files": [
     "src",
+    "ui",
     "README.md"
   ],
   "keywords": [
@@ -22,6 +23,16 @@
     "name": "T3 Code Hub",
     "hooks": "./src/hooks.ts",
     "middleware": "./src/hub.middleware.js",
+    "panels": [
+      {
+        "slot": "settings",
+        "file": "ui/key.html",
+        "title": "T3 Code Hub",
+        "titles": {
+          "zh": "T3 Code Hub"
+        }
+      }
+    ],
     "summary": {
       "en": "Serve Magpie quota as a CLIProxyAPI usage hub for T3 Code.",
       "zh": "把 Magpie 的额度以 CLIProxyAPI Hub 的形式提供给 T3 Code。"

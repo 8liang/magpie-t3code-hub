@@ -1,0 +1,9 @@
+body { margin: 0; }
+#app { display: grid; gap: 10px; padding: 2px 0 4px; }
+.row { display: grid; grid-template-columns: 7em 1fr auto auto; gap: 8px; align-items: center; }
+.row label { color: var(--magpie-muted, inherit); opacity: .75; }
+.row input { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.muted { opacity: .7; margin: 0; }
+.note { margin: 0; font-size: .92em; opacity: .8; }
+.ok { color: var(--magpie-accent, inherit); }
+@media (max-width: 520px) { .row { grid-template-columns: 1fr auto auto; } .row label { grid-column: 1 / -1; } }

@@ -211,6 +211,8 @@ codegraph context "修改 usage 映射"
 src/
   hooks.ts               Magpie 插件入口（magpie.hooks，启动 Hub）
   hub.middleware.js      空 gateway middleware，让 Magpie 把插件标成中间件
+ui/
+  key.html / key.js      Magpie 设置面板：显示 Hub 地址和 management key
   standalone.ts          独立运行入口
   hub/
     server.ts            HTTP 路由、鉴权、健康检查、ensureHub

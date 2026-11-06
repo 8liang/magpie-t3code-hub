@@ -38,6 +38,7 @@ Hub 不接触模型流量，只读写额度：
 |---|---|---|
 | 插件入口 | `src/hooks.ts` | request hooks 模块：从 `plugins.json` 读选项，启动/替换 Hub 单例；`onRequest` 原样放行 |
 | 中间件声明 | `src/hub.middleware.js` | moejs 空中间件，只用于让 Magpie 把插件标成中间件；不改动任何请求 |
+| 设置面板 | `ui/key.html` / `key.js` | Magpie 设置 → 插件里的面板：读本插件选项里的 `managementKey`，显示 Hub 地址和 key；没有时可生成一个并保存到选项（Magpie 随即重启宿主）。面板不能联网也不能读文件，所以只认选项里的 key |
 | Hub 服务器 | `src/hub/server.ts` | 路由、鉴权、请求体校验、健康检查、状态文件 |
 | 额度读取 | `src/hub/magpie.ts` | 请求 Magpie 额度 API，5 秒缓存，失败时返回上一份快照 |
 | 映射 | `src/hub/mapping.ts` | Magpie 账号 → `auth-files`；窗口 → Claude / Codex usage |
