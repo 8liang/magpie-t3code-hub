@@ -33,6 +33,14 @@
         }
       }
     ],
+    "options": {
+      "managementKey": "",
+      "host": "127.0.0.1",
+      "port": 4319,
+      "magpieQuotaUrl": "http://127.0.0.1:3425/v1/magpie/quotas",
+      "cacheTtlMs": 5000,
+      "maxStaleMs": 600000
+    },
     "summary": {
       "en": "Serve Magpie quota as a CLIProxyAPI usage hub for T3 Code.",
       "zh": "把 Magpie 的额度以 CLIProxyAPI Hub 的形式提供给 T3 Code。"

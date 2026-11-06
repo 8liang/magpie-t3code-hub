@@ -78,6 +78,8 @@ magpie plugin options magpie-t3code-hub off
 | `maxStaleMs` | 旧快照最长继续提供时间（默认 10 分钟） |
 | `backoffMs` | 上游失败后的快速失败窗口（默认 10 秒） |
 
+在 Magpie 里也可以点插件那一行的“选项”直接编辑。还没设置过选项时，编辑框里显示的是 `package.json` 中 `magpie.options` 给的示例：`managementKey`（留空表示用 token 文件里的 key）、`host`、`port`、`magpieQuotaUrl`、`cacheTtlMs`、`maxStaleMs`，值都是默认值，原样保存不会改变行为。设置 → 插件里的 T3 Code Hub 面板显示的就是这里的 `managementKey`。
+
 ## 安装为 Magpie 插件
 
 ```bash
