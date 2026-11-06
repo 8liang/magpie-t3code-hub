@@ -108,7 +108,7 @@ T3 Code 的 CLIProxyAPI usage source 只处理 `provider` 为 `codex` 或 `claud
   - Codex：`https://chatgpt.com/backend-api/wham/usage` 与 reset-credits
 - 按 Anthropic / Codex 的原生 JSON 结构解析成进度条。
 
-因此 Hub 不是直接返回 Magpie 的窗口结构，而是**按 T3 发来的原生 URL，合成对应供应商的 usage JSON**。Magpie 的 Claude / Codex 账号走原生映射；其他供应商（Cursor、Qoder、WorkBuddy 等）挂在 Claude 账号下，每个供应商一行 `Weekly · <供应商>`，取最紧的一个窗口。
+因此 Hub 不是直接返回 Magpie 的窗口结构，而是**按 T3 发来的原生 URL，合成对应供应商的 usage JSON**。Magpie 的 Claude / Codex 账号走原生映射；其他供应商（Cursor、Qoder、WorkBuddy 等）挂在 Claude 组里一个名为 “Magpie” 的账号下，每个供应商一行 `Weekly · <供应商>`，取最紧的一个窗口。
 
 详见 [映射规则](mapping.md)。
 
@@ -120,7 +120,7 @@ T3 Code 的 CLIProxyAPI usage source 只处理 `provider` 为 `codex` 或 `claud
 
 ## 已知限制
 
-1. **T3 Code 目前只认 `codex` / `claude` 两种账号**。非原生供应商只能挂在 Claude 账号下显示，行名前缀固定为 “Weekly ·”。这是 T3 的数据模型限制，不是 Hub 的数据问题。
+1. **T3 Code 目前只认 `codex` / `claude` 两种账号**。非原生供应商只能挂在 Claude 组里的 “Magpie” 账号下显示，行名前缀固定为 “Weekly ·”。这是 T3 的数据模型限制，不是 Hub 的数据问题。
 2. **只有两个原生桶**：Codex 只有 primary / secondary；Claude 原生有 5 小时 / 7 天，其余窗口走 scoped 桶。Magpie 的更多窗口在 T3 中可能被合并或截断。
 3. **余额型账号不显示**：DeepSeek 余额、OpenCode Zen 余额没有百分比窗口，T3 的进度条模型无法表达，Hub 会把这些账号标记为 disabled。
 4. **reset credits 不暴露**：Magpie 没有向插件开放 reset-credit 消费接口，因此 Hub 不向 T3 广告可消费的 reset credits，避免出现点了没用的按钮。

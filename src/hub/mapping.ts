@@ -415,9 +415,11 @@ function authFileFor(account: MagpieQuotaAccount, key: string, base: string): Cl
 const CARRIER_KEY = "magpie/providers";
 
 /**
- * Hand every drawable non-native account to one Claude account (see
- * claudeUsageFor). The carrier is the first enabled native Claude account;
- * without one, a synthetic "Magpie" account carries them. Carried accounts
+ * Hand every drawable non-native account to one synthetic Claude account,
+ * "Magpie" (see claudeUsageFor). It has no email on purpose: T3 merges hub
+ * accounts with its own sign-ins by driver+email and keeps only the copy it
+ * checked last, so riders on the native Claude account vanished whenever
+ * T3's own Claude reading was newer (docs/mapping.md). Carried accounts
  * stay in the snapshot (and /v1/hub/status) but are disabled for T3.
  */
 function attachRiders(
@@ -430,25 +432,20 @@ function attachRiders(
   );
   if (riders.length === 0) return;
 
-  let carrier = accounts.find(
-    (account) => account.quota.provider === "claude" && !account.authFile.disabled,
-  );
-  if (!carrier) {
-    let authIndex = stableHash(CARRIER_KEY);
-    let suffix = 2;
-    while (byAuthIndex.has(authIndex)) {
-      authIndex = stableHash(`${CARRIER_KEY}:${suffix}`);
-      suffix += 1;
-    }
-    carrier = {
-      key: CARRIER_KEY,
-      referenceAt: fetchedAt,
-      authFile: { id: "Magpie", auth_index: authIndex, provider: "claude", disabled: false },
-      quota: { provider: "magpie", name: "Magpie", windows: [] },
-    };
-    accounts.push(carrier);
-    byAuthIndex.set(authIndex, carrier);
+  let authIndex = stableHash(CARRIER_KEY);
+  let suffix = 2;
+  while (byAuthIndex.has(authIndex)) {
+    authIndex = stableHash(`${CARRIER_KEY}:${suffix}`);
+    suffix += 1;
   }
+  const carrier: HubAccount = {
+    key: CARRIER_KEY,
+    referenceAt: fetchedAt,
+    authFile: { id: "Magpie", auth_index: authIndex, provider: "claude", disabled: false },
+    quota: { provider: "magpie", name: "Magpie", windows: [] },
+  };
+  accounts.push(carrier);
+  byAuthIndex.set(authIndex, carrier);
 
   carrier.riders = riders;
   for (const rider of riders) {

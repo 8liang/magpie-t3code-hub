@@ -69,13 +69,11 @@ Codex · user@example.com
 
 ### 非原生供应商
 
-非原生账号**不单独出现在 T3 里**，而是挂到一个 Claude 账号上（`HubAccount.riders`），每个账号一行 scoped 进度条：
+非原生账号**不单独出现在 T3 里**，而是挂到一个合成的 Claude 账号 “Magpie” 上（`HubAccount.riders`），每个账号一行 scoped 进度条：
 
 ```text
-Claude Code · user@example.com            ← 承载账号（唯一一列）
-  Session                     63%
-  Weekly                      67%
-  Weekly · Cursor             89.5%       ← 每个供应商一行，占满整行
+Magpie                                    ← 承载账号（Claude 组里的一列，没有 Session/Weekly）
+  Weekly · Cursor             89.5%       ← 每个供应商一行
   Weekly · Qoder              49.5%
   Weekly · Qoder CN · a@qq.com 46.5%      ← 同一供应商有多个账号时带上 user
   Weekly · Qoder CN · b@qq.com 34.0%
@@ -87,11 +85,13 @@ Claude Code · user@example.com            ← 承载账号（唯一一列）
 - 每个窗口 id 一行（Claude 的行键是 `kind:id`，scoped 窗口 id 是 `seven_day_<display_name 的 slug>`）；
 - 某账号没有该窗口时，那一格留空。
 
-所以只要池里有多个账号，每条进度条最多只有 `1/N` 宽。只保留一个 Claude 账号、把其他供应商都变成它的行，每行就占满整行。
+所以只要池里有多个账号，每条进度条最多只有 `1/N` 宽。把其他供应商都变成一个账号的行，而不是各占一列，Claude 组最多只有两列（你的 Claude 账号 + Magpie）。
+
+为什么不挂在原生 Claude 账号上：T3 按 `driver + email` 把 hub 账号和它自己登录的账号合并，合并时**只保留 `checkedAt` 较新的那一份**（web 端 `usageLimits` 模块，`p = newer ? a : l`），`checkedAt` 是 T3 读取时的本地时间。挂在原生账号上时，T3 自己刷新 Claude 用量后它那份更新，挂着的行就整份消失，直到 hub 再次被读取（例如手动刷新）。Magpie 账号没有 email，不会和任何账号合并。
 
 规则：
 
-- 承载账号：第一个未禁用的原生 Claude 账号；没有时生成一个合成账号（`id: "Magpie"`，key `magpie/providers`）。
+- 承载账号：总是合成账号（`id: "Magpie"`，key `magpie/providers`，无 email）。原生 Claude 账号只映射自己的窗口。
 - 被承载的账号在 auth-files 中 `disabled: true`，在 `/v1/hub/status` 中带 `carriedBy`。
 - 每个账号只取**用量最高**（最先耗尽）的窗口；用量相同时取 Magpie 顺序中的第一个。其余窗口不显示。
 - 行名为供应商名（`account.name`）；同名账号多于一个时为 `<name> · <user>`。T3 按 slug 区分行，slug 冲突时追加 ` #2`。

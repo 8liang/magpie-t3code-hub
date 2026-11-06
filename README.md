@@ -13,7 +13,7 @@
 **显示效果**
 
 - Claude Code、Codex 账号按 T3 原生方式显示：Session、Weekly 进度条。
-- Cursor、Qoder、WorkBuddy 等其他供应商，挂在 Claude 账号下面，每个账号一行 `Weekly · <供应商>`，显示用量最高的那个窗口。T3 只认 Claude、Codex 两类账号，`Weekly ·` 前缀是 T3 自己加的。
+- Cursor、Qoder、WorkBuddy 等其他供应商，放在 Claude 组里单独一列 “Magpie”，每个账号一行 `Weekly · <供应商>`，显示用量最高的那个窗口。T3 只认 Claude、Codex 两类账号，`Weekly ·` 前缀是 T3 自己加的。
 - 在 Magpie 里显示为“中间件 + 请求 Hook + 面板”，不改动任何请求。
 
 **排查**：`bun run verify` 会按 T3 的请求顺序把 hub 跑一遍；完整文档从 [docs/index.md](docs/index.md) 开始（中文）。
@@ -86,5 +86,6 @@ The full knowledge base starts at [docs/index.md](docs/index.md).
 
 Version `0.1.0`. Read [docs/index.md](docs/index.md) for limitations: T3 Code's
 CLIProxyAPI adapter only understands `codex` and `claude` accounts, so other
-Magpie providers ride on the Claude account as one full-width
-`Weekly · <provider>` row each.
+Magpie providers ride on a separate "Magpie" account in the Claude group, one
+`Weekly · <provider>` row each. It has no email, so T3 never merges it with its
+own Claude sign-in (a merge keeps only the newer copy and would drop the rows).

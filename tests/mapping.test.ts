@@ -31,14 +31,20 @@ describe("auth-files projection", () => {
     expect(codex?.id_token?.plan_type).toBe("plus");
     expect(codex?.id_token?.chatgpt_plan_type).toBe("plus");
 
-    // Carried by the Claude account, so hidden from T3 as its own column.
+    // Carried by the synthetic "Magpie" account, so hidden as its own column.
     const qoder = byId.get("qoder/qoder@example.com");
     expect(qoder?.provider).toBe("claude");
     expect(qoder?.email).toBeUndefined();
     expect(qoder?.disabled).toBe(true);
     expect(snapshot.accounts.find((entry) => entry.key === "qoder/qoder@example.com")?.carriedBy).toBe(
-      "claude/claude@example.com",
+      "magpie/providers",
     );
+    // The carrier has no email, so T3 never merges it with its own Claude
+    // sign-in (a merge keeps only the newer copy and drops the riders).
+    const carrier = byId.get("Magpie");
+    expect(carrier?.provider).toBe("claude");
+    expect(carrier?.email).toBeUndefined();
+    expect(carrier?.disabled).toBe(false);
   });
 
   test("hides accounts T3 Code cannot draw: balances, empty windows and lapsed sign-ins", () => {
@@ -49,7 +55,7 @@ describe("auth-files projection", () => {
     expect(disabled.get("opencode-zen-free/API key")).toBe(true);
     expect(disabled.get("workbuddy/lapsed@example.com")).toBe(true);
     // A stale snapshot with windows is still useful: carried, not dropped.
-    const carrier = snapshot.accounts.find((entry) => entry.key === "claude/claude@example.com");
+    const carrier = snapshot.accounts.find((entry) => entry.key === "magpie/providers");
     expect(carrier?.riders?.map((rider) => rider.key)).toEqual([
       "qoder/qoder@example.com",
       "workbuddy-ai/workbuddy@example.com",
@@ -59,7 +65,8 @@ describe("auth-files projection", () => {
 
   test("auth indexes are stable, unique and round-trip through the snapshot", () => {
     const indexes = new Set(authFiles(snapshot).map((file) => file.auth_index));
-    expect(indexes.size).toBe(fixture.data.length);
+    // Every Magpie account plus the synthetic carrier.
+    expect(indexes.size).toBe(fixture.data.length + 1);
     for (const hubAccount of snapshot.accounts) {
       expect(snapshot.byAuthIndex.get(hubAccount.authFile.auth_index)).toBe(hubAccount);
     }
@@ -75,7 +82,8 @@ describe("usage translation", () => {
     const usage = claudeUsageFor(account("claude/claude@example.com"), NOW) as ClaudeUsage;
     expect(usage.five_hour?.utilization).toBe(11);
     expect(usage.seven_day?.utilization).toBe(44);
-    expect(usage.limits).toHaveLength(4);
+    // Only its own scoped window: riders live on the Magpie carrier.
+    expect(usage.limits).toHaveLength(1);
     const limit = usage.limits?.[0];
     expect(limit?.kind).toBe("weekly_scoped");
     expect(limit?.percent).toBe(7);
@@ -83,9 +91,11 @@ describe("usage translation", () => {
     expect(limit?.resets_at).toBe(new Date(NOW + 3_600_000).toISOString());
   });
 
-  test("the Claude account carries one full-width row per provider", () => {
-    const usage = claudeUsageFor(account("claude/claude@example.com"), NOW) as ClaudeUsage;
-    expect(usage.limits?.slice(1)).toEqual([
+  test("the Magpie account carries one full-width row per provider", () => {
+    const usage = claudeUsageFor(account("magpie/providers"), NOW) as ClaudeUsage;
+    expect(usage.five_hour).toBeNull();
+    expect(usage.seven_day).toBeNull();
+    expect(usage.limits).toEqual([
       // Qoder's tightest window (Credits 49.5%), not the first one.
       {
         kind: "weekly_scoped",
@@ -108,12 +118,11 @@ describe("usage translation", () => {
     ]);
     // A rider the server considers unservable just loses its row.
     const filtered = claudeUsageFor(
-      account("claude/claude@example.com"),
+      account("magpie/providers"),
       NOW,
       (rider) => rider.quota.provider !== "cursor",
     ) as ClaudeUsage;
     expect(filtered.limits?.map((limit) => limit.scope?.model?.display_name)).toEqual([
-      "Opus",
       "Qoder",
       "WorkBuddy AI",
     ]);
@@ -130,7 +139,7 @@ describe("usage translation", () => {
       { data: [make("a@x.com"), make("a.x.com"), { provider: "cursor", name: "Cursor", windows: [{ name: "Total", used: 2 }] }] },
       { fetchedAt: NOW },
     );
-    // No native Claude account: a synthetic "Magpie" account carries them all.
+    // A synthetic "Magpie" account carries them all.
     const visible = authFiles(built).filter((file) => !file.disabled);
     expect(visible).toEqual([
       expect.objectContaining({ id: "Magpie", provider: "claude", disabled: false }),

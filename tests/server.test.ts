@@ -381,7 +381,8 @@ describe("hub HTTP surface", () => {
 
   test("auth-files matches what T3 Code parses", async () => {
     const body = await authFiles();
-    expect(body.files).toHaveLength(fixture.data.length);
+    // Every Magpie account plus the synthetic "Magpie" carrier.
+    expect(body.files).toHaveLength(fixture.data.length + 1);
     for (const file of body.files) {
       expect(typeof file.id).toBe("string");
       expect(typeof file.auth_index).toBe("string");
@@ -471,7 +472,7 @@ describe("hub HTTP surface", () => {
       accounts: Array<{ id: string; sourceProvider: string; cliproxyProvider: string }>;
     };
     expect(body.stale).toBe(false);
-    expect(body.accounts).toHaveLength(fixture.data.length);
+    expect(body.accounts).toHaveLength(fixture.data.length + 1);
     expect(body.accounts.find((entry) => entry.id === "qoder/qoder@example.com")).toMatchObject({
       sourceProvider: "qoder",
       cliproxyProvider: "claude",

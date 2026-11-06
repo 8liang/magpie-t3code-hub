@@ -56,7 +56,7 @@ curl -s -H "Authorization: Bearer $(bun run token)" \
 - `fetchedAt` / `stale` / `staleForMs` / `expired` / `maxStaleMs`
 - `lastOkAt` / `lastError`
 - `upstream.url` / `upstream.accounts`
-- 每个账号的 `id`、`authIndex`、`sourceProvider`、`cliproxyProvider`、`disabled`、`carriedBy`（被哪个 Claude 账号承载）、窗口（`used` 是从 `used` / `remaining` / `amount+limit` 推导后、与 T3 看到一致的百分比）
+- 每个账号的 `id`、`authIndex`、`sourceProvider`、`cliproxyProvider`、`disabled`、`carriedBy`（承载它的账号，固定为 `magpie/providers`）、窗口（`used` 是从 `used` / `remaining` / `amount+limit` 推导后、与 T3 看到一致的百分比）
 
 注意：这个端点包含账号邮箱/用户名和上游错误，属于敏感信息，需要 token。
 
